@@ -16,7 +16,7 @@ def lambda_handler(event, context):
     with requests.get(web_url, stream=True) as response:
         response.raise_for_status()
         
-        # 3. Use 'raw' to get the raw socket response stream
+        # 3. get the raw socket response stream
         # upload_fileobj expects a file-like object; response.raw acts exactly like one
         s3_client.upload_fileobj(
             Fileobj=response.raw, 
