@@ -1,3 +1,5 @@
+# pull data from the NYS Contract Ads website and store it in an S3 bucket
+
 import json
 import boto3
 import requests
