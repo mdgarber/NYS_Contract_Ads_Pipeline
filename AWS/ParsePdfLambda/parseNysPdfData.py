@@ -74,3 +74,4 @@ def lambda_handler(event, context):
 
 # TODO: make sure file exports to s3://nys-ads-raw-data/parsed-text/
 # TODO: find way to view and validate the extracted text
+# TODO: lambda is failing in AWS due to lambda layer issue. Repackage the layer.zip file and re-upload to AWS.
