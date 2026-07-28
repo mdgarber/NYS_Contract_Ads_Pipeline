@@ -5,7 +5,14 @@ import logging
 import os
 
 import boto3
-from pypdf import PdfReader
+
+try:
+    from pypdf import PdfReader
+except ImportError as exc:
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.error("pypdf import failed. Ensure the Lambda layer is built for the correct Python runtime and attached to the function.")
+    raise ImportError("pypdf is not available in the Lambda runtime") from exc
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -15,12 +22,13 @@ def lambda_handler(event, context):
     s3 = boto3.client("s3")
     lambda_client = boto3.client("lambda")
 
-    bucket_name = os.environ.get("nys-ads-raw-data")
-    s3_key = os.environ.get("NYC_ads_list.pdf")
-    output_prefix = os.environ.get("nys-ads-parsed")
-    cleaner_lambda_name = os.environ.get("cleanNysData")
+    bucket_name = os.environ.get("BUCKET_NAME") or os.environ.get("nys-ads-raw-data") or "nys-ads-raw-data"
+    s3_key = os.environ.get("S3_KEY") or os.environ.get("NYC_ads_list.pdf") or "NYC_ads_list.pdf"
+    output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("nys-ads-parsed") or "nys-ads-parsed"
+    cleaner_lambda_name = os.environ.get("CLEANER_LAMBDA_NAME") or os.environ.get("cleanNysData")
 
-    output_S3_key = f"{output_prefix.rstrip('/')}/{os.path.basename(s3_key).rsplit('.', 1)[0]}.txt"
+    output_prefix = output_prefix.rstrip("/")
+    output_S3_key = f"{output_prefix}/{os.path.basename(s3_key).rsplit('.', 1)[0]}.txt"
 
     try:
         response = s3.get_object(Bucket=bucket_name, Key=s3_key)
