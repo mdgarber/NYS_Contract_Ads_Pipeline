@@ -32,7 +32,7 @@ def lambda_handler(event, context):
     s3_key = os.environ.get("NYS_ads_list.pdf") or "NYS_ads_list.pdf"
     logger.info("S3 key: %s assigned", s3_key)
 
-    output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("nys-ads-parsed") or "nys-ads-parsed"
+    output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("parsed-text") or "parsed-text"
     logger.info("Output prefix: %s assigned", output_prefix)
     #cleaner_lambda_name = os.environ.get("CLEANER_LAMBDA_NAME") or os.environ.get("cleanNysData")
 
@@ -41,6 +41,7 @@ def lambda_handler(event, context):
 
     output_S3_key = f"{output_prefix}/{os.path.basename(s3_key).rsplit('.', 1)[0]}.txt"
 
+    # Read the PDF from S3
     logger.info("Output S3 key: %s", output_S3_key)
     logger.info("Starting to read PDF from S3: %s/%s", bucket_name, s3_key)
     try:
@@ -61,6 +62,7 @@ def lambda_handler(event, context):
     if not text.strip():
         raise RuntimeError(f"No text extracted from PDF: {bucket_name}/{s3_key}")
 
+    # Write new file to S3
     s3.put_object(
         Bucket=bucket_name,
         Key=output_S3_key,
