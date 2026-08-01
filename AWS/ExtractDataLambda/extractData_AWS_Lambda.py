@@ -8,7 +8,7 @@ def lambda_handler(event, context):
      # Variables
     web_url = 'https://www.nyscr.ny.gov/Ads/GenerateSearchPdf'
     bucket_name = 'nys-ads-raw-data'
-    s3_key = 'NYC_ads_list.pdf'
+    s3_key = 'NYS_ads_list.pdf'
 
     # 1. Initialize the S3 Client
     # automatically pick up  AWS credentials (IAM role, env vars, or ~/.aws/credentials)

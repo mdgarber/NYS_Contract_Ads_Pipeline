@@ -26,10 +26,10 @@ def lambda_handler(event, context):
     s3 = boto3.client("s3")
     lambda_client = boto3.client("lambda")
 
-    bucket_name = os.environ.get("BUCKET_NAME") or os.environ.get("nys-ads-raw-data") or "nys-ads-raw-data"
+    bucket_name = os.environ.get("nys-ads-raw-data") or "nys-ads-raw-data"
     logger.info("Bucket name: %s assigned", bucket_name)
 
-    s3_key = os.environ.get("S3_KEY") or os.environ.get("NYC_ads_list.pdf") or "NYC_ads_list.pdf"
+    s3_key = os.environ.get("NYS_ads_list.pdf") or "NYS_ads_list.pdf"
     logger.info("S3 key: %s assigned", s3_key)
 
     output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("nys-ads-parsed") or "nys-ads-parsed"
