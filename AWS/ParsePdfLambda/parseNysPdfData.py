@@ -46,23 +46,57 @@ def lambda_handler(event, context):
     logger.info("Starting to read PDF from S3: %s/%s", bucket_name, s3_key)
     try:
         response = s3.get_object(Bucket=bucket_name, Key=s3_key)
-        pdf_bytes = response["Body"].read()
+        logger.info("response from S3 get_object: %s", response)
+        pdf_body = response["Body"]
+        pdf_bytes = pdf_body.read()
+        try:
+            pdf_body.close()
+        except Exception:
+            logger.debug("Failed to close S3 body stream; continuing.")
+
     except Exception:
         logger.exception("Failed to read PDF from S3: %s/%s", bucket_name, s3_key)
         raise
-
+    
     reader = PdfReader(io.BytesIO(pdf_bytes))
     text_parts = []
-    for page in reader.pages:
-        page_text = page.extract_text() or ""
+    try:
+        num_pages = len(reader.pages)
+    except Exception:
+        num_pages = None
+    logger.info("PDF page count: %s", num_pages)
+
+    # Optional environment variable to limit pages processed during debugging
+    try:
+        max_pages = int(os.environ.get("MAX_PAGES") or 0)
+    except Exception:
+        max_pages = 0
+
+    for idx, page in enumerate(reader.pages, start=1):
+        if max_pages and idx > max_pages:
+            logger.info("Reached MAX_PAGES limit (%d). Stopping early.", max_pages)
+            break
+
+        logger.info("Processing page %d%s", idx, f"/{num_pages}" if num_pages else "")
+        try:
+            page_text = page.extract_text() or ""
+        except Exception:
+            logger.exception("Failed to extract text from page %d; skipping page.", idx)
+            continue
+
         if page_text.strip():
             text_parts.append(page_text.strip())
+            logger.info("Extracted page %d text length: %d", idx, len(page_text.strip()))
 
     text = "\n\n".join(text_parts)
     if not text.strip():
         raise RuntimeError(f"No text extracted from PDF: {bucket_name}/{s3_key}")
 
+    logger.info("Successfully read PDF from S3: %s/%s", bucket_name, s3_key)
+
+
     # Write new file to S3
+    logger.info("Writing extracted text to S3: %s/%s", bucket_name, output_S3_key)
     s3.put_object(
         Bucket=bucket_name,
         Key=output_S3_key,
@@ -83,6 +117,6 @@ def lambda_handler(event, context):
         })
     }
 
-# TODO: lambda is timing out in AWS. continue debugging
+# TODO: lambda is timing out in AWS. continue debugging (gets stuck near "CR#: 2137518")
 # TODO: make sure file exports to s3://nys-ads-raw-data/parsed-text/
 # TODO: find way to view and validate the extracted text
