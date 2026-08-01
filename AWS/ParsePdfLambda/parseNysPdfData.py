@@ -9,27 +9,40 @@ import boto3
 try:
     from pypdf import PdfReader
 except ImportError as exc:
+    logging.basicConfig(level=logging.INFO, force=True)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     logger.error("pypdf import failed. Ensure the Lambda layer is built for the correct Python runtime and attached to the function.")
     raise ImportError("pypdf is not available in the Lambda runtime") from exc
 
+logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+logger.propagate = True
 
 
 def lambda_handler(event, context):
+    logger.info("Starting PDF parsing.")
     s3 = boto3.client("s3")
     lambda_client = boto3.client("lambda")
 
     bucket_name = os.environ.get("BUCKET_NAME") or os.environ.get("nys-ads-raw-data") or "nys-ads-raw-data"
+    logger.info("Bucket name: %s assigned", bucket_name)
+
     s3_key = os.environ.get("S3_KEY") or os.environ.get("NYC_ads_list.pdf") or "NYC_ads_list.pdf"
+    logger.info("S3 key: %s assigned", s3_key)
+
     output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("nys-ads-parsed") or "nys-ads-parsed"
-    cleaner_lambda_name = os.environ.get("CLEANER_LAMBDA_NAME") or os.environ.get("cleanNysData")
+    logger.info("Output prefix: %s assigned", output_prefix)
+    #cleaner_lambda_name = os.environ.get("CLEANER_LAMBDA_NAME") or os.environ.get("cleanNysData")
 
     output_prefix = output_prefix.rstrip("/")
+    logger.info("Output prefix after stripping trailing slash: %s", output_prefix)
+
     output_S3_key = f"{output_prefix}/{os.path.basename(s3_key).rsplit('.', 1)[0]}.txt"
 
+    logger.info("Output S3 key: %s", output_S3_key)
+    logger.info("Starting to read PDF from S3: %s/%s", bucket_name, s3_key)
     try:
         response = s3.get_object(Bucket=bucket_name, Key=s3_key)
         pdf_bytes = response["Body"].read()
@@ -57,18 +70,7 @@ def lambda_handler(event, context):
 
     logger.info("Uploaded extracted text to s3://%s/%s", bucket_name, output_S3_key)
 
-    if cleaner_lambda_name:
-        payload = {
-            "bucket": bucket_name,
-            "key": output_S3_key,
-            "source_key": s3_key,
-        }
-        lambda_client.invoke(
-            FunctionName=cleaner_lambda_name,
-            InvocationType="Event",
-            Payload=json.dumps(payload),
-        )
-        logger.info("Triggered cleaner Lambda: %s", cleaner_lambda_name)
+#    logger.error("PDF parsing - end of process. Now to return the response to the caller....")
 
     return {
         "statusCode": 200,
@@ -79,7 +81,6 @@ def lambda_handler(event, context):
         })
     }
 
-
+# TODO: lambda is timing out in AWS. continue debugging
 # TODO: make sure file exports to s3://nys-ads-raw-data/parsed-text/
 # TODO: find way to view and validate the extracted text
-# TODO: lambda is failing in AWS due to lambda layer issue. Repackage the layer.zip file and re-upload to AWS.

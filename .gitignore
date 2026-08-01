@@ -47,3 +47,5 @@ coverage.xml
 # OS files
 .DS_Store
 Thumbs.db
+AWS/ParsePdfLambda/jumpToRDS.sh
+jump2Rds.ps1
