@@ -1,122 +1,54 @@
 # Extract text from PDF stored in S3 and write the parsed text to S3 for downstream processing.
+from csv import reader
 import io
 import json
 import logging
 import os
-
 import boto3
+import sys
+from pypdf import PdfReader
 
-try:
-    from pypdf import PdfReader
-except ImportError as exc:
+def lambda_handler(event, context):
     logging.basicConfig(level=logging.INFO, force=True)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    logger.error("pypdf import failed. Ensure the Lambda layer is built for the correct Python runtime and attached to the function.")
-    raise ImportError("pypdf is not available in the Lambda runtime") from exc
+    logger.propagate = True
 
-logging.basicConfig(level=logging.INFO, force=True)
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.propagate = True
+    s3_client = boto3.client('s3')
 
+    source_file = os.environ.get('SOURCE_FILE', 'NYS_ads_list.pdf')
+    source_bucket = os.environ.get('SOURCE_BUCKET', 'nys-ads-raw-data')
+    target_file = os.environ.get('TARGET_FILE', 'raw_text.txt')
+    target_bucket = os.environ.get('TARGET_BUCKET', 'nys-ads-raw-data')
 
-def lambda_handler(event, context):
-    logger.info("Starting PDF parsing.")
-    s3 = boto3.client("s3")
-    lambda_client = boto3.client("lambda")
+    # Get the PDF stored in S3
+    pdf_file = s3_client.get_object(Bucket=source_bucket, Key=source_file)['Body'].read()
+    reader = PdfReader(io.BytesIO(pdf_file))
+    number_of_pages = len(reader.pages)
 
-    bucket_name = os.environ.get("nys-ads-raw-data") or "nys-ads-raw-data"
-    logger.info("Bucket name: %s assigned", bucket_name)
-
-    s3_key = os.environ.get("NYS_ads_list.pdf") or "NYS_ads_list.pdf"
-    logger.info("S3 key: %s assigned", s3_key)
-
-    output_prefix = os.environ.get("OUTPUT_PREFIX") or os.environ.get("parsed-text") or "parsed-text"
-    logger.info("Output prefix: %s assigned", output_prefix)
-    #cleaner_lambda_name = os.environ.get("CLEANER_LAMBDA_NAME") or os.environ.get("cleanNysData")
-
-    output_prefix = output_prefix.rstrip("/")
-    logger.info("Output prefix after stripping trailing slash: %s", output_prefix)
-
-    output_S3_key = f"{output_prefix}/{os.path.basename(s3_key).rsplit('.', 1)[0]}.txt"
-
-    # Read the PDF from S3
-    logger.info("Output S3 key: %s", output_S3_key)
-    logger.info("Starting to read PDF from S3: %s/%s", bucket_name, s3_key)
+    # Loop through each page and append extracted text to target file
     try:
-        response = s3.get_object(Bucket=bucket_name, Key=s3_key)
-        logger.info("response from S3 get_object: %s", response)
-        pdf_body = response["Body"]
-        pdf_bytes = pdf_body.read()
-        try:
-            pdf_body.close()
-        except Exception:
-            logger.debug("Failed to close S3 body stream; continuing.")
-
-    except Exception:
-        logger.exception("Failed to read PDF from S3: %s/%s", bucket_name, s3_key)
-        raise
+        with open('/tmp/' + target_file, 'w') as f:
+            for i in range(0, number_of_pages):
+                logger.info("Extracting text from page #%s", i)
+                page = reader.pages[i]
+                text = page.extract_text()
+                f.write(text)
+                logger.info("Text extracted from page #%s", i)
+        logger.info("Writing extracted text to S3")
+        s3_client.upload_file('/tmp/' + target_file, target_bucket, target_file)
+        logger.info("Text successfully written to S3")
+    except:
+        logger.error("Unexpected error: ", sys.exc_info()[0])
+        logger.error("Page #%s: ", i)
+    else:
+        logger.info("All %s pages of text extracted from PDF successfully.", number_of_pages)
     
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    text_parts = []
-    try:
-        num_pages = len(reader.pages)
-    except Exception:
-        num_pages = None
-    logger.info("PDF page count: %s", num_pages)
-
-    # Optional environment variable to limit pages processed during debugging
-    try:
-        max_pages = int(os.environ.get("MAX_PAGES") or 0)
-    except Exception:
-        max_pages = 0
-
-    for idx, page in enumerate(reader.pages, start=1):
-        if max_pages and idx > max_pages:
-            logger.info("Reached MAX_PAGES limit (%d). Stopping early.", max_pages)
-            break
-
-        logger.info("Processing page %d%s", idx, f"/{num_pages}" if num_pages else "")
-        try:
-            page_text = page.extract_text() or ""
-        except Exception:
-            logger.exception("Failed to extract text from page %d; skipping page.", idx)
-            continue
-
-        if page_text.strip():
-            text_parts.append(page_text.strip())
-            logger.info("Extracted page %d text length: %d", idx, len(page_text.strip()))
-
-    text = "\n\n".join(text_parts)
-    if not text.strip():
-        raise RuntimeError(f"No text extracted from PDF: {bucket_name}/{s3_key}")
-
-    logger.info("Successfully read PDF from S3: %s/%s", bucket_name, s3_key)
-
-
-    # Write new file to S3
-    logger.info("Writing extracted text to S3: %s/%s", bucket_name, output_S3_key)
-    s3.put_object(
-        Bucket=bucket_name,
-        Key=output_S3_key,
-        Body=text.encode("utf-8"),
-        ContentType="text/plain; charset=utf-8",
-    )
-
-    logger.info("Uploaded extracted text to s3://%s/%s", bucket_name, output_S3_key)
-
-#    logger.error("PDF parsing - end of process. Now to return the response to the caller....")
-
     return {
-        "statusCode": 200,
-        "body": json.dumps({
-            "bucket": bucket_name,
-            "source_key": s3_key,
-            "output_S3_key": output_S3_key
-        })
+        'statusCode': 200,
+        'body': json.dumps('parseNysPdfData has completed.')
     }
 
-# TODO: lambda is timing out in AWS. continue debugging (gets stuck near "CR#: 2137518")
+
+# TODO: lambda is failing on put object - doesn't like the target location reference
 # TODO: make sure file exports to s3://nys-ads-raw-data/parsed-text/
-# TODO: find way to view and validate the extracted text
