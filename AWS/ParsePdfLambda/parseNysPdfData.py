@@ -20,6 +20,7 @@ def lambda_handler(event, context):
     source_bucket = os.environ.get('SOURCE_BUCKET', 'nys-ads-raw-data')
     target_file = os.environ.get('TARGET_FILE', 'raw_text.txt')
     target_bucket = os.environ.get('TARGET_BUCKET', 'nys-ads-raw-data')
+    target_subfolder = os.environ.get('TARGET_SUBFOLDER', 'parsed-text/')
 
     # Get the PDF stored in S3
     pdf_file = s3_client.get_object(Bucket=source_bucket, Key=source_file)['Body'].read()
@@ -36,7 +37,7 @@ def lambda_handler(event, context):
                 f.write(text)
                 logger.info("Text extracted from page #%s", i)
         logger.info("Writing extracted text to S3")
-        s3_client.upload_file('/tmp/' + target_file, target_bucket, target_file)
+        s3_client.upload_file('/tmp/' + target_file, target_bucket, target_subfolder + target_file)
         logger.info("Text successfully written to S3")
     except:
         logger.error("Unexpected error: ", sys.exc_info()[0])
